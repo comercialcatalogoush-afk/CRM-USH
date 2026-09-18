@@ -60,7 +60,15 @@ export default function WhatsappSection() {
 
   useEffect(() => {
     loadAll();
-  }, [loadAll]);
+    // Auto-refresco: el QR rota cada ~20s mientras se vincula, y los chats
+    // se actualizan al llegar mensajes nuevos. Sin sesión no hace polling.
+    const id = window.setInterval(() => {
+      if (!session) return;
+      loadAll();
+    }, 8000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadAll, session?.status]);
 
   const openChat = async (chat: CrmWaChat) => {
     setActiveChat(chat);
@@ -83,11 +91,12 @@ export default function WhatsappSection() {
     const text = draft.trim();
     setSending(true);
     try {
-      // Fase 1: se registra en la cola; el bridge local (whatmeow) lo entrega.
+      // Se registra en la cola de salida; el servicio wa-sync (Baileys) lo entrega.
       const { error: serr } = await supabase.from('crm_wa_messages').insert({
         chat_jid: activeChat.jid,
         content: text,
         is_from_me: true,
+        outgoing_status: 'queued',
         timestamp: new Date().toISOString(),
         media_type: null,
       });

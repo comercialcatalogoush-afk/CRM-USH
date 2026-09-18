@@ -1,0 +1,22 @@
+{
+  "name": "ush-crm-wa-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servicio de sincronización WhatsApp del CRM Ush By Ushuaia (Baileys): QR de vinculación, persistencia de sesión, sincronización de chats/mensajes y cola de salida.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "link": "node link.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@whiskeysockets/baileys": "^6.7.0",
+    "dotenv": "^16.4.5",
+    "pino": "^9.3.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

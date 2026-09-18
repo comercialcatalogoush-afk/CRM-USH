@@ -1,0 +1,15 @@
+# Credenciales
+.env
+
+# Dependencias del servicio (no se suben al repo)
+node_modules/
+
+# Sesión de WhatsApp (nunca subir credenciales del dispositivo)
+auth/
+
+# Logs
+*.log
+
+# Temporales
+tmp_*
+*.tmp
