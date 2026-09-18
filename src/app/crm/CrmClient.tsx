@@ -5,7 +5,7 @@ import { supabase, ADMIN_EMAIL } from '@/lib/supabase';
 import Logo from '@/components/Logo';
 import {
   Lock, LogOut, ShieldAlert, Key, LayoutDashboard, Users,
-  Building2, Target, ListTodo, StickyNote, X,
+  Building2, Target, ListTodo, StickyNote, MessageCircle, X,
 } from 'lucide-react';
 import DashboardSection from '@/components/crm/DashboardSection';
 import ContactSection from '@/components/crm/ContactSection';
@@ -13,8 +13,9 @@ import CompaniesSection from '@/components/crm/CompaniesSection';
 import PipelineSection from '@/components/crm/PipelineSection';
 import TaskSection from '@/components/crm/TaskSection';
 import ActivitySection from '@/components/crm/ActivitySection';
+import WhatsappSection from '@/components/crm/WhatsappSection';
 
-type CrmTab = 'panel' | 'contacts' | 'companies' | 'pipeline' | 'tasks' | 'activity';
+type CrmTab = 'panel' | 'contacts' | 'companies' | 'pipeline' | 'tasks' | 'activity' | 'whatsapp';
 
 const TABS: { key: CrmTab; label: string; icon: React.ComponentType<{ size?: number | string; className?: string }> }[] = [
   { key: 'panel',      label: 'Panel de Control',    icon: LayoutDashboard },
@@ -23,6 +24,7 @@ const TABS: { key: CrmTab; label: string; icon: React.ComponentType<{ size?: num
   { key: 'pipeline',   label: 'Pipeline de Ventas',  icon: Target },
   { key: 'tasks',      label: 'Tareas',              icon: ListTodo },
   { key: 'activity',   label: 'Línea de Tiempo',     icon: StickyNote },
+  { key: 'whatsapp',   label: 'WhatsApp',            icon: MessageCircle },
 ];
 
 export default function CrmClient() {
@@ -234,6 +236,7 @@ export default function CrmClient() {
         {activeTab === 'pipeline' && <PipelineSection />}
         {activeTab === 'tasks' && <TaskSection />}
         {activeTab === 'activity' && <ActivitySection />}
+        {activeTab === 'whatsapp' && <WhatsappSection />}
       </div>
     </div>
   );
