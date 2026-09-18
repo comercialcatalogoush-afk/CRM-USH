@@ -202,11 +202,12 @@ async function processMessage(waMessage, opts = {}) {
     : Date.now();
   const createdAt = new Date(timestampMs).toISOString();
 
-  // Chat (nombre por pushName o el del contacto emparejado)
+  // Chat: nombre por pushName o contacto del CRM.
+  // Solo setea name si hay valor (evita borrar nombre que ya tiene el chat).
   const matched = matchPhone(phone);
   const chatName = waMessage.pushName || matched?.full_name || null;
   const chatPatch = {
-    name: chatName,
+    ...(chatName ? { name: chatName } : {}),
     phone: phone,
     contact_id: matched?.id || null,
     last_message_at: createdAt,
@@ -420,6 +421,75 @@ async function startSocket(forceNew = false) {
           await markChatRead(u.key.remoteJid).catch(() => {});
         }
       }
+    }
+  });
+
+  // ── Lote inicial de TODOS los chats al conectar (chats.set) ───────────────
+  // Baileys entrega este evento con la lista completa de chats cuando la
+  // sesión termina de sincronizar. Es la fuente más completa de conversaciones.
+  sock.ev.on('chats.set', async ({ chats: allChats, isLatest }) => {
+    log.info({ total: allChats?.length, isLatest }, 'chats.set: sincronización masiva');
+    let ok = 0, fail = 0;
+    for (const ch of allChats || []) {
+      const jid = ch.id;
+      if (!jid || isJidBroadcast(jid)) continue;
+      const phone = jidToPhone(jid);
+      const matched = matchPhone(phone);
+      const ts = ch.conversationTimestamp
+        ? new Date(Number(ch.conversationTimestamp) * 1000).toISOString()
+        : null;
+      const nombre = ch.name || ch.subject || ch.pushName || matched?.full_name || null;
+      try {
+        await upsertChat(jid, {
+          ...(nombre ? { name: nombre } : {}),
+          phone,
+          contact_id: matched?.id || null,
+          ...(ts ? { last_message_at: ts } : {}),
+          unread_count: ch.unreadCount || 0,
+        });
+        ok++;
+      } catch (e) {
+        fail++;
+        log.error({ jid, err: e.message }, 'chats.set: error guardando chat');
+      }
+    }
+    log.info({ ok, fail, total: allChats?.length }, 'chats.set procesado');
+  });
+
+  // ── Libreta de contactos del teléfono (contacts.upsert) ─────────────────
+  // Actualiza los nombres de chats existentes con el nombre del directorio
+  // del teléfono. Clave para mostrar "María López" en vez de "+573001234567".
+  sock.ev.on('contacts.upsert', async (contactList) => {
+    let actualizados = 0;
+    for (const c of contactList || []) {
+      const phone = jidToPhone(c.id);
+      // verifiedName = nombre verificado; notify = nombre push del teléfono
+      const nombre = c.verifiedName || c.notify || c.name || null;
+      if (!phone || !nombre) continue;
+      try {
+        // Solo actualiza si no tiene nombre aún
+        await db
+          .from('crm_wa_chats')
+          .update({ name: nombre })
+          .eq('phone', phone)
+          .or('name.is.null,name.eq.');
+        actualizados++;
+      } catch (e) {
+        // ignorar si el chat no existe
+      }
+    }
+    if (actualizados > 0) log.info({ actualizados }, 'contacts.upsert: nombres actualizados');
+  });
+
+  // ── Actualización de contactos ya conocidos ────────────────────────────
+  sock.ev.on('contacts.update', async (updates) => {
+    for (const c of updates || []) {
+      const phone = jidToPhone(c.id);
+      const nombre = c.verifiedName || c.notify || c.name || null;
+      if (!phone || !nombre) continue;
+      try {
+        await db.from('crm_wa_chats').update({ name: nombre }).eq('phone', phone);
+      } catch (e) { /* ignorar */ }
     }
   });
 

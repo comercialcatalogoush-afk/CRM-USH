@@ -13,9 +13,10 @@ import CompaniesSection from '@/components/crm/CompaniesSection';
 import PipelineSection from '@/components/crm/PipelineSection';
 import TaskSection from '@/components/crm/TaskSection';
 import ActivitySection from '@/components/crm/ActivitySection';
-import WhatsappSection from '@/components/crm/WhatsappSection';
+import { WhatsappSection, waSectionMeta } from '@/components/crm/WhatsappSection';
 
 type CrmTab = 'panel' | 'contacts' | 'companies' | 'pipeline' | 'tasks' | 'activity' | 'whatsapp';
+type CrmRole = 'admin' | 'seller';
 
 const TABS: { key: CrmTab; label: string; icon: React.ComponentType<{ size?: number | string; className?: string }> }[] = [
   { key: 'panel',      label: 'Panel de Control',    icon: LayoutDashboard },
@@ -30,11 +31,30 @@ const TABS: { key: CrmTab; label: string; icon: React.ComponentType<{ size?: num
 export default function CrmClient() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasNonAdminSession, setHasNonAdminSession] = useState(false);
+  const [crmRole, setCrmRole] = useState<CrmRole>('admin');
   const [configMissing, setConfigMissing] = useState(false);
   const [loginEmail, setLoginEmail] = useState(ADMIN_EMAIL);
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [activeTab, setActiveTab] = useState<CrmTab>('panel');
+
+  const resolveRole = async (email: string): Promise<CrmRole | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('crm_users')
+        .select('role, active')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+      if (!error && data) {
+        if (data.active === false) return null;
+        return data.role === 'admin' ? 'admin' : 'seller';
+      }
+      // Compatibilidad: si aún no hay fila, el ADMIN_EMAIL sigue siendo admin.
+      return email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : null;
+    } catch (e) {
+      return email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : null;
+    }
+  };
 
   useEffect(() => {
     if (!supabase) {
@@ -46,20 +66,22 @@ export default function CrmClient() {
       try {
         const { data } = await supabase.auth.getSession();
         const sessionUser = data.session?.user;
-        const isAdmin = !!sessionUser && !!sessionUser.email && sessionUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-        setIsAuthenticated(isAdmin);
-        setHasNonAdminSession(!!sessionUser && !isAdmin);
+        const role = sessionUser?.email ? await resolveRole(sessionUser.email) : null;
+        setIsAuthenticated(role !== null);
+        setCrmRole(role ?? 'admin');
+        setHasNonAdminSession(!!sessionUser && role === null);
       } catch (e) {
         setIsAuthenticated(false);
         setHasNonAdminSession(false);
       }
     };
     checkAuth();
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const sessionUser = session?.user;
-      const authed = !!sessionUser && !!sessionUser.email && sessionUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-      setIsAuthenticated(authed);
-      setHasNonAdminSession(!!sessionUser && !authed);
+      const role = sessionUser?.email ? await resolveRole(sessionUser.email) : null;
+      setIsAuthenticated(role !== null);
+      setCrmRole(role ?? 'admin');
+      setHasNonAdminSession(!!sessionUser && role === null);
     });
     return () => {
       authListener.subscription.unsubscribe();
@@ -90,14 +112,15 @@ export default function CrmClient() {
       const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
       if (!error) {
         const sessionUser = (await supabase.auth.getSession()).data.session?.user;
-        const isAdmin = !!sessionUser && !!sessionUser.email && sessionUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-        if (isAdmin) {
+        const role = sessionUser?.email ? await resolveRole(sessionUser.email) : null;
+        if (role !== null) {
           setIsAuthenticated(true);
+          setCrmRole(role);
           setHasNonAdminSession(false);
         } else {
           setHasNonAdminSession(true);
           setIsAuthenticated(false);
-          setLoginError('Esta cuenta no tiene permisos de administrador.');
+          setLoginError('Esta cuenta no tiene permisos de acceso al CRM.');
         }
       } else {
         setLoginError('Credenciales incorrectas. Verifique el correo o la contraseña.');
@@ -124,7 +147,7 @@ export default function CrmClient() {
             </div>
             <h1 className="text-xl font-black text-ush-navy uppercase tracking-wide">Acceso Restringido</h1>
             <p className="text-xs text-neutral-500 font-light">
-              Tu cuenta no tiene permisos de administrador. El CRM solo está disponible para la cuenta autorizada.
+              Tu cuenta no está autorizada para ingresar al CRM. Solicita acceso al administrador.
             </p>
           </div>
         </div>
@@ -149,7 +172,7 @@ export default function CrmClient() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">Correo Electrónico Administrador *</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">Correo Electrónico *</label>
               <input
                 type="email"
                 required
@@ -174,7 +197,7 @@ export default function CrmClient() {
               type="submit"
               className="w-full bg-ush-navy text-white font-bold py-3.5 px-4 text-xs uppercase tracking-widest hover:bg-ush-pink transition-all shadow-md flex items-center justify-center gap-2"
             >
-              <Key size={16} /> Iniciar Sesión como Admin
+              <Key size={16} /> Iniciar Sesión
             </button>
           </form>
         </div>
@@ -193,6 +216,9 @@ export default function CrmClient() {
             <span className="text-xs font-bold uppercase tracking-widest bg-[#d88193] text-white px-2.5 py-1">CRM Comercial</span>
           </div>
           <div className="flex items-center gap-3">
+            <span className={`hidden sm:inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-1 ${crmRole === 'admin' ? 'bg-[#d88193]/20 text-[#d88193]' : 'bg-white/10 text-neutral-300'}`}>
+              {crmRole === 'admin' ? 'Administrador' : 'Vendedor'}
+            </span>
             <button onClick={handleLogout} className="text-xs text-rose-300 hover:text-rose-100 flex items-center gap-1 font-bold border-l border-neutral-700 pl-4">
               <LogOut size={16} /> Salir
             </button>
@@ -209,7 +235,7 @@ export default function CrmClient() {
         </div>
 
         <div className="flex items-center gap-2 border-b border-gray-200 bg-white p-2 mb-6 shadow-sm overflow-x-auto">
-          {TABS.map((tab) => {
+          {TABS.filter((tab) => crmRole === 'admin' || tab.key !== 'whatsapp').map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -231,12 +257,12 @@ export default function CrmClient() {
         </div>
 
         {activeTab === 'panel' && <DashboardSection />}
-        {activeTab === 'contacts' && <ContactSection />}
-        {activeTab === 'companies' && <CompaniesSection />}
-        {activeTab === 'pipeline' && <PipelineSection />}
-        {activeTab === 'tasks' && <TaskSection />}
-        {activeTab === 'activity' && <ActivitySection />}
-        {activeTab === 'whatsapp' && <WhatsappSection />}
+        {activeTab === 'contacts' && <ContactSection userRole={crmRole} />}
+        {activeTab === 'companies' && <CompaniesSection userRole={crmRole} />}
+        {activeTab === 'pipeline' && <PipelineSection userRole={crmRole} />}
+        {activeTab === 'tasks' && <TaskSection userRole={crmRole} />}
+        {activeTab === 'activity' && <ActivitySection userRole={crmRole} />}
+        {activeTab === 'whatsapp' && crmRole === 'admin' && <WhatsappSection />}
       </div>
     </div>
   );
