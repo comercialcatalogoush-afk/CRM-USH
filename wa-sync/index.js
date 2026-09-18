@@ -54,6 +54,13 @@ const log = pino({
   base: null,
   timestamp: pino.stdTimeFunctions.isoTime,
 });
+process.on('unhandledRejection', (reason) => {
+  log.warn({ err: reason?.message || String(reason) }, 'unhandledRejection capturado (servicio activo)');
+});
+process.on('uncaughtException', (err) => {
+  log.error({ err: err.message, stack: err.stack }, 'uncaughtException capturado (servicio activo)');
+});
+
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -63,9 +70,11 @@ const HEARTBEAT_MS = 30_000;
 // ── Utilidades ──────────────────────────────────────────────
 function jidToPhone(jid) {
   if (!jid) return null;
+  if (jid.endsWith('@lid')) return null; // los LIDs no son números telefónicos
   let p = jid.split('@')[0] || '';
   if (p.includes(':')) p = p.split(':')[0];
-  return p.replace(/\D/g, '') || null;
+  const digits = p.replace(/\D/g, '');
+  return digits.length >= 7 ? digits : null;
 }
 
 function normalizePhone(p) {
@@ -288,6 +297,7 @@ function startStatusServer() {
 let sock = null;
 let reconnectAttempt = 0;
 let keepRunning = true;
+const contactsCache = new Map(); // JID/phone -> { name, phone }
 
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -427,6 +437,108 @@ async function startSocket(forceNew = false) {
   // ── Lote inicial de TODOS los chats al conectar (chats.set) ───────────────
   // Baileys entrega este evento con la lista completa de chats cuando la
   // sesión termina de sincronizar. Es la fuente más completa de conversaciones.
+    // ── Historial masivo del teléfono (messaging-history.set) ────────────────
+  // Procesa TODOS los chats (personales @s.whatsapp.net, grupos @g.us y clientes Business @lid)
+  // mapeando los números reales y los nombres de la libreta de contactos.
+  sock.ev.on('messaging-history.set', async ({ chats: hChats, contacts: hContacts, messages: hMessages, isLatest }) => {
+    log.info({
+      chats: hChats?.length || 0,
+      contacts: hContacts?.length || 0,
+      messages: hMessages?.length || 0,
+      isLatest
+    }, 'messaging-history.set recibido: procesando sincronización completa');
+
+    // 1. Mapa exhaustivo de contactos y LIDs
+    const lidToPhone = new Map(); // lid -> phone real
+    const jidToName = new Map();  // jid/lid/phone -> nombre real
+
+    for (const c of hContacts || []) {
+      const nombre = c.name || c.notify || c.verifiedName || null;
+      const phone = jidToPhone(c.jid || c.id);
+
+      if (c.lid && phone) lidToPhone.set(c.lid, phone);
+      if (c.id && c.id.endsWith('@lid') && phone) lidToPhone.set(c.id, phone);
+
+      if (nombre) {
+        if (c.id) jidToName.set(c.id, nombre);
+        if (c.lid) jidToName.set(c.lid, nombre);
+        if (c.jid) jidToName.set(c.jid, nombre);
+        if (phone) jidToName.set(phone, nombre);
+        if (c.id) contactsCache.set(c.id, nombre);
+        if (phone) contactsCache.set(phone, nombre);
+      }
+    }
+
+    // 2. Extraer teléfonos reales de los mensajes si tienen participantPn
+    for (const m of hMessages || []) {
+      const rJid = m.key?.remoteJid;
+      const pJid = m.key?.participant || m.participant;
+      const pPn = m.participantPn || m.key?.participantPn;
+      if (pPn) {
+        const phone = jidToPhone(pPn);
+        if (phone) {
+          if (rJid && rJid.endsWith('@lid')) lidToPhone.set(rJid, phone);
+          if (pJid && pJid.endsWith('@lid')) lidToPhone.set(pJid, phone);
+        }
+      }
+    }
+
+    // 3. Sincronizar TODOS los chats (no descartar ninguno salvo transmisiones)
+    let chatsOk = 0;
+    for (const ch of hChats || []) {
+      const jid = ch.id;
+      if (!jid || isJidBroadcast(jid) || jid === 'status@broadcast') continue;
+
+      let phone = null;
+      if (jid.endsWith('@s.whatsapp.net')) {
+        phone = jidToPhone(jid);
+      } else if (jid.endsWith('@lid')) {
+        phone = lidToPhone.get(jid) || null;
+      }
+
+      const matched = phone ? matchPhone(phone) : null;
+      const nombreReal =
+        jidToName.get(jid) ||
+        (phone ? jidToName.get(phone) : null) ||
+        contactsCache.get(jid) ||
+        ch.name ||
+        ch.subject ||
+        ch.displayName ||
+        matched?.full_name ||
+        null;
+
+      const ts = ch.conversationTimestamp
+        ? new Date(Number(ch.conversationTimestamp) * 1000).toISOString()
+        : null;
+
+      try {
+        await upsertChat(jid, {
+          name: nombreReal,
+          phone: phone, // solo pone el teléfono si es real, nunca inventa LIDs
+          contact_id: matched?.id || null,
+          ...(ts ? { last_message_at: ts } : {}),
+          unread_count: ch.unreadCount || 0,
+        });
+        chatsOk++;
+      } catch (e) {
+        log.error({ jid, err: e.message }, 'error guardando chat de historial');
+      }
+    }
+    log.info({ chatsOk, total: hChats?.length }, 'todos los chats de historial sincronizados');
+
+    // 4. Procesar mensajes de historial (desde agosto 2026)
+    let msgsOk = 0;
+    for (const m of hMessages || []) {
+      try {
+        const jid = m.key?.remoteJid;
+        if (!jid || isJidBroadcast(jid) || jid === 'status@broadcast') continue;
+        await processMessage(m);
+        msgsOk++;
+      } catch (e) {}
+    }
+    log.info({ msgsOk, total: hMessages?.length }, 'mensajes de historial procesados');
+  });
+
   sock.ev.on('chats.set', async ({ chats: allChats, isLatest }) => {
     log.info({ total: allChats?.length, isLatest }, 'chats.set: sincronización masiva');
     let ok = 0, fail = 0;

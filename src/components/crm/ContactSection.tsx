@@ -69,7 +69,9 @@ function normalizeTextKey(value?: string | null): string {
   return value.trim().toLowerCase().replace(/\s+/g, '');
 }
 
-export default function ContactSection() {
+export default function ContactSection(props: { userRole?: 'admin' | 'seller' }) {
+  const { userRole = 'admin' } = props;
+  const canDelete = userRole === 'admin';
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
   const [loading, setLoading] = useState(true);
@@ -498,6 +500,7 @@ export default function ContactSection() {
                         >
                           <Edit2 size={13} />
                         </button>
+                        {canDelete && (
                         <button
                           onClick={() => setDeleteTarget(contact)}
                           title="Eliminar contacto"
@@ -505,6 +508,7 @@ export default function ContactSection() {
                         >
                           <Trash2 size={13} />
                         </button>
+                      )}
                       </div>
                     </td>
                   </tr>
@@ -696,7 +700,7 @@ export default function ContactSection() {
         </div>
       )}
 
-      {deleteTarget && (
+      {canDelete && deleteTarget && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white max-w-md w-full rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="bg-[#1b2333] text-white p-5 flex items-center justify-between">

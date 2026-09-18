@@ -60,7 +60,9 @@ const nowToLocalInput = (): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-export default function ActivitySection() {
+export default function ActivitySection(props: { userRole?: 'admin' | 'seller' }) {
+  const { userRole = 'admin' } = props;
+  const canDelete = userRole === 'admin';
   const [activities, setActivities] = useState<ActivityWithNames[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [deals, setDeals] = useState<DealOption[]>([]);
@@ -311,13 +313,15 @@ export default function ActivitySection() {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(activity)}
-                    title="Eliminar actividad"
-                    className="self-start p-1.5 border border-gray-200 text-neutral-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors shrink-0"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(activity)}
+                      title="Eliminar actividad"
+                      className="self-start p-1.5 border border-gray-200 text-neutral-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </li>
               );
             })}

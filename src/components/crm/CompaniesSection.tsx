@@ -29,7 +29,9 @@ const EMPTY_FORM: CompanyForm = {
   notes: '',
 };
 
-export default function CompaniesSection() {
+export default function CompaniesSection(props: { userRole?: 'admin' | 'seller' }) {
+  const { userRole = 'admin' } = props;
+  const canDelete = userRole === 'admin';
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -351,6 +353,7 @@ export default function CompaniesSection() {
                         >
                           <Edit2 size={11} /> Editar
                         </button>
+                        {canDelete && (
                         <button
                           onClick={() => handleDelete(company)}
                           title="Eliminar empresa"
@@ -358,6 +361,7 @@ export default function CompaniesSection() {
                         >
                           <Trash2 size={11} /> Eliminar
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>

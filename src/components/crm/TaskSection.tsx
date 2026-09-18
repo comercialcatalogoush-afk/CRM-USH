@@ -48,7 +48,9 @@ const toLocalInput = (iso?: string | null): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-export default function TaskSection() {
+export default function TaskSection(props: { userRole?: 'admin' | 'seller' }) {
+  const { userRole = 'admin' } = props;
+  const canDelete = userRole === 'admin';
   const [tasks, setTasks] = useState<CrmTask[]>([]);
   const [contacts, setContacts] = useState<Pick<CrmContact, 'id' | 'full_name'>[]>([]);
   const [deals, setDeals] = useState<Pick<CrmDeal, 'id' | 'title'>[]>([]);
@@ -472,6 +474,7 @@ export default function TaskSection() {
                     >
                       Editar
                     </button>
+                    {canDelete && (
                     <button
                       onClick={() => handleDelete(task)}
                       title="Eliminar tarea"
@@ -479,6 +482,7 @@ export default function TaskSection() {
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
+                    )}
                   </div>
                 </li>
               );

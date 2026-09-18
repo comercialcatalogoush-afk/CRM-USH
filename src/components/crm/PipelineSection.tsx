@@ -18,7 +18,9 @@ const PROBABILITY_MAP: Record<DealStage, number> = {
   lost: 0,
 };
 
-export default function PipelineSection() {
+export default function PipelineSection(props: { userRole?: 'admin' | 'seller' }) {
+  const { userRole = 'admin' } = props;
+  const canDelete = userRole === 'admin';
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [deals, setDeals] = useState<CrmDeal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -283,6 +285,7 @@ export default function PipelineSection() {
                               <Eye size={12} />
                             </button>
                           )}
+                          {canDelete && (
                           <button
                             onClick={() => handleDelete(deal)}
                             title="Eliminar oportunidad"
@@ -290,6 +293,7 @@ export default function PipelineSection() {
                           >
                             <Trash2 size={12} />
                           </button>
+                          )}
                         </div>
                       </div>
                       <p className="text-[11px] text-neutral-500 truncate">{deal.contact_name}</p>
