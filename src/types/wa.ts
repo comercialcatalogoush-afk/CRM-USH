@@ -45,4 +45,13 @@ export type CrmWaMessage = {
   is_from_me: boolean;
   timestamp: string | null;
   created_at: string;
+  outgoing_status?: 'queued' | 'sending' | 'sent' | 'failed' | null;
+  error?: string | null;
+};
+
+export const WA_OUTGOING_LABELS: Record<string, string> = {
+  queued: 'En cola',
+  sending: 'Enviando…',
+  sent: 'Entregado',
+  failed: 'Falló el envío',
 };

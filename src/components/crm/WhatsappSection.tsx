@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
 import {
   MessageCircle, Smartphone, QrCode, RefreshCw, Search, Send,
-  Inbox, CheckCheck, ChevronLeft, Loader2,
+  Inbox, CheckCheck, ChevronLeft, Loader2, Clock,
 } from 'lucide-react';
 import { CrmWaSession, CrmWaChat, CrmWaMessage, WaSessionStatus } from '@/types/wa';
 import { crmErrorText } from '@/lib/crmErrors';
@@ -58,6 +58,22 @@ export default function WhatsappSection() {
     }
   }, []);
 
+  const refreshMessages = useCallback(async () => {
+    if (!activeChat) return;
+    try {
+      const { data, error: perr } = await supabase
+        .from('crm_wa_messages')
+        .select('*')
+        .eq('chat_jid', activeChat.jid)
+        .order('timestamp', { ascending: true });
+      if (perr) throw perr;
+      setMessages(((data || []) as CrmWaMessage[]).slice(-100));
+    } catch (e) {
+      setError(crmErrorText(e, 'No se pudieron cargar los mensajes.'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChat?.jid]);
+
   useEffect(() => {
     loadAll();
     // Auto-refresco: el QR rota cada ~20s mientras se vincula, y los chats
@@ -65,10 +81,11 @@ export default function WhatsappSection() {
     const id = window.setInterval(() => {
       if (!session) return;
       loadAll();
+      refreshMessages();
     }, 8000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadAll, session?.status]);
+  }, [loadAll, refreshMessages, session?.status]);
 
   const openChat = async (chat: CrmWaChat) => {
     setActiveChat(chat);
@@ -81,6 +98,11 @@ export default function WhatsappSection() {
         .order('timestamp', { ascending: true });
       if (perr) throw perr;
       setMessages(((data || []) as CrmWaMessage[]).slice(-100));
+      // Marca el chat como leído en cuanto se abre y refresca el badge local.
+      if (chat.unread_count > 0) {
+        await supabase.from('crm_wa_chats').update({ unread_count: 0 }).eq('jid', chat.jid);
+        setChats((prev) => prev.map((c) => (c.jid === chat.jid ? { ...c, unread_count: 0 } : c)));
+      }
     } catch (e) {
       setError(crmErrorText(e, 'No se pudieron cargar los mensajes.'));
     }
@@ -295,6 +317,7 @@ export default function WhatsappSection() {
                 {messages.map((m) => {
                   const ts = m.timestamp ? new Date(m.timestamp) : null;
                   const time = ts ? ts.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                  const isImage = m.media_type === 'image' && m.media_url;
                   return (
                     <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'}`}>
                       <div
@@ -305,7 +328,30 @@ export default function WhatsappSection() {
                         }`}
                       >
                         <p className="text-[13px] text-neutral-800 whitespace-pre-wrap break-words">{m.content}</p>
-                        <p className="text-[9px] text-neutral-400 text-right mt-1 font-light">{time}</p>
+                        {isImage ? (
+                          <img
+                            src={m.media_url!}
+                            alt={m.content || 'Imagen de WhatsApp'}
+                            className="max-h-64 w-auto rounded-md mt-1.5 object-contain"
+                            loading="lazy"
+                          />
+                        ) : m.media_type && !m.content ? (
+                          <p className="text-[11px] text-neutral-500 font-light mt-0.5">
+                            [{m.media_type === 'document' ? m.filename : m.media_type}]
+                          </p>
+                        ) : null}
+                        <p className="text-[9px] text-neutral-400 text-right mt-1 font-light flex items-center justify-end gap-1">
+                          {time}
+                          {m.is_from_me && m.outgoing_status === 'failed' ? (
+                            <span className="text-red-500 font-bold" title={m.error || 'Falló el envío'}>
+                              ✗
+                            </span>
+                          ) : m.is_from_me && m.outgoing_status === 'sent' ? (
+                            <span className="text-sky-600">✓✓</span>
+                          ) : m.is_from_me && (m.outgoing_status === 'queued' || m.outgoing_status === 'sending') ? (
+                            <Clock size={10} className="text-neutral-400" />
+                          ) : null}
+                        </p>
                       </div>
                     </div>
                   );

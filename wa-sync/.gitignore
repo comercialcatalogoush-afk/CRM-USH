@@ -7,9 +7,8 @@ node_modules/
 # Sesión de WhatsApp (nunca subir credenciales del dispositivo)
 auth/
 
-# Logs
+# Logs y temporales
 *.log
-
-# Temporales
+*.err
 tmp_*
 *.tmp
