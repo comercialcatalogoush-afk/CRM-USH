@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.cdnfonts.com/css/avenir');
+
+html, body {
+  overflow-x: hidden;
+}
+
+:root {
+  --ush-pink: #d88193;
+  --ush-pink-dark: #c06579;
+  --ush-pink-hover: #b5586c;
+  --ush-pink-light: #fdf3f5;
+  --ush-pink-soft: #f8e4e8;
+  --ush-navy: #1b2333;
+  --ush-navy-dark: #121824;
+  --ush-card: #ffffff;
+  --ush-accent: #d88193;
+  --ush-body-bg: #ffffff;
+}
+
+html {
+  scroll-behavior: smooth;
+}
