@@ -64,6 +64,7 @@ export default function CrmClient() {
   const [sidebarMobile, setSidebarMobile] = useState(false);
   const [userName, setUserName] = useState('');
   const [unreadWa, setUnreadWa] = useState(0);
+  const [selectedWaJid, setSelectedWaJid] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<string[]>(['CRM', 'Ventas', 'Marketing']);
 
   // Auth check
@@ -106,6 +107,13 @@ export default function CrmClient() {
   };
 
   const handleLogout = async () => { await supabase.auth.signOut(); setIsAuthenticated(false); };
+  // Navega al módulo WhatsApp y abre un chat específico por JID
+  const navigateToWaChat = (jid: string) => {
+    setSelectedWaJid(jid);
+    setActiveTab('whatsapp');
+    setSidebarMobile(false);
+  };
+
 
   const today = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const todayCap = today.charAt(0).toUpperCase() + today.slice(1);
@@ -144,15 +152,15 @@ export default function CrmClient() {
   const renderSection = () => {
     switch (activeTab) {
       case 'panel': return <DashboardSection />;
-      case 'contacts': return <ContactSection />;
+      case 'contacts': return <ContactSection onOpenWaChat={navigateToWaChat} />;
       case 'companies': return <CompaniesSection />;
       case 'pipeline': return <PipelineSection />;
       case 'tasks': return <TaskSection />;
-      case 'activity': return <ActivitySection />;
-      case 'whatsapp': return <WhatsappSection />;
+      case 'activity': return <ActivitySection onOpenWaChat={navigateToWaChat} />;
+      case 'whatsapp': return <WhatsappSection initialJid={selectedWaJid} onJidConsumed={() => setSelectedWaJid(null)} />;
       case 'segments': return <SegmentosSection />;
       case 'marketing': return <MarketingSection />;
-      case 'prospects': return <ProspectsSection />;
+      case 'prospects': return <ProspectsSection onOpenWaChat={navigateToWaChat} />;
       default: return <DashboardSection />;
     }
   };

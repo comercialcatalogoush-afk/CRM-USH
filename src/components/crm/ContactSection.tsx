@@ -69,8 +69,8 @@ function normalizeTextKey(value?: string | null): string {
   return value.trim().toLowerCase().replace(/\s+/g, '');
 }
 
-export default function ContactSection(props: { userRole?: 'admin' | 'seller' }) {
-  const { userRole = 'admin' } = props;
+export default function ContactSection(props: { userRole?: 'admin' | 'seller'; onOpenWaChat?: (jid: string) => void }) {
+  const { userRole = 'admin', onOpenWaChat } = props;
   const canDelete = userRole === 'admin';
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
@@ -435,7 +435,18 @@ export default function ContactSection(props: { userRole?: 'admin' | 'seller' })
                       )}
                       {(contact.whatsapp_number || contact.phone) && (
                         <a
-                          href={`https://wa.me/${normalizeWhatsApp(contact.whatsapp_number ?? contact.phone ?? '')}`}
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const phone = contact.whatsapp_number ?? contact.phone ?? '';
+                            if (phone && onOpenWaChat) {
+                              const digits = phone.replace(/\D/g, '');
+                              const jid = (digits.startsWith('57') ? digits : '57' + digits) + '@s.whatsapp.net';
+                              onOpenWaChat(jid);
+                            } else if (phone) {
+                              window.open('https://wa.me/' + phone.replace(/\D/g, ''), '_blank');
+                            }
+                          }}
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Abrir WhatsApp"
@@ -804,7 +815,7 @@ export default function ContactSection(props: { userRole?: 'admin' | 'seller' })
         </div>
       )}
 
-      {selectedContact && <Contact360Drawer contact={selectedContact} onClose={() => setSelectedContact(null)} />}
+      {selectedContact && <Contact360Drawer contact={selectedContact} onClose={() => setSelectedContact(null)} onOpenWaChat={onOpenWaChat} />}
     </div>
   );
 }

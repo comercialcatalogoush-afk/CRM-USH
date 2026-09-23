@@ -234,7 +234,12 @@ function MessageBubble({
 }
 
 // ─── COMPONENTE PRINCIPAL: WhatsappSection ──────────────────────────────────
-export function WhatsappSection() {
+interface WhatsappSectionProps {
+  initialJid?: string | null;
+  onJidConsumed?: () => void;
+}
+
+export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionProps = {}) {
   const [qrData, setQrData] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>('disconnected');
   const [sessionPhone, setSessionPhone] = useState<string | null>(null);
@@ -284,19 +289,43 @@ export function WhatsappSection() {
   const loadChats = useCallback(async () => {
     setLoadingChats(true);
     try {
-      const { data, count } = await supabase
-        .from('crm_wa_chats')
-        .select('*, crm_contacts(full_name, email, city)', { count: 'exact' })
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .limit(400);
+      const [chatsRes, contactsRes] = await Promise.all([
+        supabase
+          .from('crm_wa_chats')
+          .select('*, crm_contacts(full_name, email, city)', { count: 'exact' })
+          .order('last_message_at', { ascending: false, nullsFirst: false })
+          .limit(400),
+        supabase
+          .from('crm_contacts')
+          .select('id, full_name, phone, whatsapp_number, email, city')
+          .limit(500),
+      ]);
 
-      setTotalChats(count || 0);
-      const mapped: ChatWithContact[] = (data || []).map((c: any) => ({
-        ...c,
-        contact_name: c.crm_contacts?.full_name ?? null,
-        contact_email: c.crm_contacts?.email ?? null,
-        contact_city: c.crm_contacts?.city ?? null,
-      }));
+      const phoneMap = new Map<string, { full_name: string; email: string | null; city: string | null }>();
+      (contactsRes.data || []).forEach((ct: any) => {
+        const raw = (ct.whatsapp_number || ct.phone || '').replace(/\D/g, '');
+        if (raw) {
+          const info = { full_name: ct.full_name, email: ct.email, city: ct.city };
+          phoneMap.set(raw, info);
+          if (raw.startsWith('57') && raw.length > 10) {
+            phoneMap.set(raw.slice(2), info);
+          } else if (raw.length === 10) {
+            phoneMap.set(`57${raw}`, info);
+          }
+        }
+      });
+
+      setTotalChats(chatsRes.count || 0);
+      const mapped: ChatWithContact[] = (chatsRes.data || []).map((c: any) => {
+        const cleanDigits = (c.phone || c.jid || '').replace(/\D/g, '');
+        const matched = c.crm_contacts || phoneMap.get(cleanDigits) || (cleanDigits.startsWith('57') ? phoneMap.get(cleanDigits.slice(2)) : phoneMap.get(`57${cleanDigits}`));
+        return {
+          ...c,
+          contact_name: matched?.full_name ?? c.name ?? null,
+          contact_email: matched?.email ?? null,
+          contact_city: matched?.city ?? null,
+        };
+      });
       setChats(mapped);
     } finally {
       setLoadingChats(false);
@@ -425,6 +454,42 @@ export function WhatsappSection() {
     [fetchAiSuggestions]
   );
 
+  // Selección o apertura automática cuando viene initialJid desde Contactos
+  useEffect(() => {
+    if (!initialJid || loadingChats) return;
+
+    const targetDigits = initialJid.replace(/\D/g, '');
+    const target = chats.find(c => {
+      if (c.jid === initialJid) return true;
+      const cDigits = (c.phone || c.jid || '').replace(/\D/g, '');
+      return cDigits === targetDigits || (cDigits.endsWith(targetDigits) && targetDigits.length >= 10);
+    });
+
+    if (target) {
+      openChat(target);
+      onJidConsumed?.();
+    } else {
+      const cleanJid = initialJid.includes('@') ? initialJid : `${targetDigits}@s.whatsapp.net`;
+      const nowIso = new Date().toISOString();
+      const syntheticChat: ChatWithContact = {
+        id: `synth_${targetDigits || Date.now()}`,
+        jid: cleanJid,
+        name: null,
+        phone: targetDigits || null,
+        contact_id: null,
+        unread_count: 0,
+        last_message_at: nowIso,
+        created_at: nowIso,
+        updated_at: nowIso,
+        contact_name: null,
+        contact_email: null,
+        contact_city: null,
+      };
+      openChat(syntheticChat);
+      onJidConsumed?.();
+    }
+  }, [initialJid, loadingChats, chats, openChat, onJidConsumed]);
+
   // Enviar mensaje
   const sendMessage = useCallback(async () => {
     if (!activeChat || !draft.trim() || sending) return;
@@ -475,8 +540,17 @@ export function WhatsappSection() {
 
   const messageGroups = useMemo(() => groupByDate(filteredMessages), [filteredMessages]);
 
-  const displayName = (c: ChatWithContact) =>
-    c.contact_name || c.name || (c.phone ? `+${c.phone}` : 'Sin nombre');
+  const displayName = (c: ChatWithContact) => {
+    if (c.contact_name) return c.contact_name;
+    if (c.name && !c.name.startsWith('+') && !c.name.includes('@')) return c.name;
+    if (c.phone) return `+${c.phone}`;
+    if (c.jid) {
+      const num = c.jid.replace(/@.*$/, '');
+      if (/^\d+$/.test(num)) return `+${num}`;
+      return num;
+    }
+    return 'Sin nombre';
+  };
 
   // Render lado derecho
   const renderRightPanel = () => {

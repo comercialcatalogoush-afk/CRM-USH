@@ -32,6 +32,7 @@ import {
 type Props = {
   contact: CrmContact | null;
   onClose: () => void;
+  onOpenWaChat?: (jid: string) => void;
 };
 
 type Related = {
@@ -69,7 +70,7 @@ const formatCOP = (value: number): string => {
 
 const EMPTY_RELATED: Related = { company: null, deals: [], tasks: [], activities: [] };
 
-export default function Contact360Drawer({ contact, onClose }: Props) {
+export default function Contact360Drawer({ contact, onClose, onOpenWaChat }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [related, setRelated] = useState<Related>(EMPTY_RELATED);
@@ -228,15 +229,23 @@ export default function Contact360Drawer({ contact, onClose }: Props) {
                   )}
                 </div>
                 {whatsappNumber && (
-                  <a
-                    href={`https://wa.me/${normalizeWhatsApp(whatsappNumber)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => {
+                      if (onOpenWaChat) {
+                        const digits = (whatsappNumber || '').replace(/\D/g, '');
+                        const jid = (digits.startsWith('57') ? digits : '57' + digits) + '@s.whatsapp.net';
+                        onOpenWaChat(jid);
+                        onClose();
+                      } else {
+                        window.open('https://wa.me/' + normalizeWhatsApp(whatsappNumber || ''), '_blank');
+                      }
+                    }}
                     className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold uppercase tracking-wider px-3 py-2 shrink-0 transition-colors"
+                    title="Abrir chat en WhatsApp"
                   >
-                    <ExternalLink size={12} />
-                    WhatsApp
-                  </a>
+                    <MessageCircle size={12} />
+                    Chat WA
+                  </button>
                 )}
               </div>
               {contact.notes && (

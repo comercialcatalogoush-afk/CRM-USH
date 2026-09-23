@@ -1,9 +1,10 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   UserPlus, Plus, Search, Star, Phone, Mail, Building2, MapPin,
-  CheckCircle, ArrowRight, MessageSquare, Tag, Filter, MoreVertical
+  CheckCircle, ArrowRight, MessageSquare, Tag, Filter, MoreVertical, Loader2
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface Prospect {
   id: string;
@@ -12,84 +13,68 @@ interface Prospect {
   phone: string;
   email: string;
   city: string;
-  score: number; // 1 to 5 stars
+  score: number;
   stage: 'nuevo' | 'contactado' | 'calificado' | 'descartado';
   notes: string;
 }
 
-export default function ProspectsSection() {
-  const [prospects, setProspects] = useState<Prospect[]>([
-    {
-      id: '1',
-      name: 'Laura Gómez',
-      company: 'Boutique D’Lujo',
-      phone: '3124567890',
-      email: 'contacto@dlujo.com',
-      city: 'Medellín',
-      score: 5,
-      stage: 'calificado',
-      notes: 'Interesada en lote inicial de 30 jeans flare y vaquero.',
-    },
-    {
-      id: '2',
-      name: 'Carlos Andrés Mendoza',
-      company: 'Moda Urbana Jeans',
-      phone: '3109876543',
-      email: 'carlos@modaurbana.co',
-      city: 'Bogotá',
-      score: 4,
-      stage: 'contactado',
-      notes: 'Solicitó lista de precios al por mayor por WhatsApp.',
-    },
-    {
-      id: '3',
-      name: 'Andrea Restrepo',
-      company: 'Tienda Pasarela',
-      phone: '3187654321',
-      email: 'pasarela.cali@gmail.com',
-      city: 'Cali',
-      score: 4,
-      stage: 'calificado',
-      notes: 'Quiere surtido con la colección juvenil TEENS.',
-    },
-    {
-      id: '4',
-      name: 'Felipe Jaramillo',
-      company: 'Distribuidora Eje Cafetero',
-      phone: '3151234567',
-      email: 'felipe@distrieje.com',
-      city: 'Pereira',
-      score: 3,
-      stage: 'nuevo',
-      notes: 'Escribió por el botón de WhatsApp de la página web.',
-    },
-    {
-      id: '5',
-      name: 'Marcela Suárez',
-      company: 'Almacén Chic',
-      phone: '3203456789',
-      email: 'marcela@almacenchic.com',
-      city: 'Barranquilla',
-      score: 2,
-      stage: 'contactado',
-      notes: 'Preguntó por tiempos de despacho y costos de flete.',
-    },
-  ]);
+interface ProspectsSectionProps {
+  onOpenWaChat?: (jid: string) => void;
+}
 
+export default function ProspectsSection({ onOpenWaChat }: ProspectsSectionProps = {}) {
+  const [prospects, setProspects] = useState<Prospect[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedStage, setSelectedStage] = useState<string>('todos');
+  const [filterStage, setFilterStage] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  // Form
   const [pName, setPName] = useState('');
   const [pCompany, setPCompany] = useState('');
   const [pPhone, setPPhone] = useState('');
   const [pEmail, setPEmail] = useState('');
   const [pCity, setPCity] = useState('');
-  const [pScore, setPScore] = useState(4);
+  const [pScore, setPScore] = useState(5);
   const [pNotes, setPNotes] = useState('');
 
+  // Cargar contactos reales de Supabase que funcionen como prospectos / leads
+  const loadProspects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('crm_contacts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        const mapped: Prospect[] = data.map((c: any) => ({
+          id: c.id,
+          name: c.full_name || 'Sin nombre',
+          company: c.company || 'Comercial Independiente',
+          phone: c.whatsapp_number || c.phone || '',
+          email: c.email || '',
+          city: c.city || 'Colombia',
+          score: 5,
+          stage: 'contactado',
+          notes: c.notes || 'Contacto registrado en CRM',
+        }));
+        setProspects(mapped);
+      }
+    } catch (e) {
+      console.error('Error cargando prospectos reales:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProspects();
+  }, [loadProspects]);
+
   const filtered = prospects.filter(p => {
-    if (selectedStage !== 'todos' && p.stage !== selectedStage) return false;
+    if (filterStage !== 'all' && p.stage !== filterStage) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -100,54 +85,77 @@ export default function ProspectsSection() {
     );
   });
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pName.trim()) return;
-    const item: Prospect = {
-      id: String(Date.now()),
-      name: pName.trim(),
-      company: pCompany.trim() || 'Particular',
-      phone: pPhone.trim(),
-      email: pEmail.trim(),
-      city: pCity.trim() || 'Colombia',
-      score: pScore,
-      stage: 'nuevo',
-      notes: pNotes.trim() || 'Lead registrado desde CRM',
-    };
-    setProspects([item, ...prospects]);
-    setPName('');
-    setPCompany('');
-    setPPhone('');
-    setPEmail('');
-    setPCity('');
-    setPNotes('');
-    setIsModalOpen(false);
+    setSaving(true);
+    try {
+      const cleanPhone = pPhone.replace(/\D/g, '');
+      const { data, error } = await supabase
+        .from('crm_contacts')
+        .insert({
+          full_name: pName.trim(),
+          company: pCompany.trim() || null,
+          phone: cleanPhone || null,
+          whatsapp_number: cleanPhone || null,
+          email: pEmail.trim() || null,
+          city: pCity.trim() || null,
+          notes: pNotes.trim() ? `[Score ${pScore}⭐] ${pNotes.trim()}` : null,
+        })
+        .select()
+        .single();
+
+      if (data) {
+        const newP: Prospect = {
+          id: data.id,
+          name: data.full_name,
+          company: data.company || 'Comercial Independiente',
+          phone: data.whatsapp_number || data.phone || '',
+          email: data.email || '',
+          city: data.city || 'Colombia',
+          score: pScore,
+          stage: 'nuevo',
+          notes: pNotes.trim(),
+        };
+        setProspects([newP, ...prospects]);
+      }
+      setPName('');
+      setPCompany('');
+      setPPhone('');
+      setPEmail('');
+      setPCity('');
+      setPNotes('');
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Error creando prospecto:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const getStageBadge = (stage: Prospect['stage']) => {
-    switch (stage) {
-      case 'calificado':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Calificado ⭐</span>;
-      case 'contactado':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800">Contactado</span>;
-      case 'nuevo':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">Nuevo Lead</span>;
-      case 'descartado':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600">Descartado</span>;
+  const handleOpenWhatsApp = (phoneStr: string) => {
+    const raw = phoneStr.replace(/\D/g, '');
+    if (!raw) return;
+    const fullDigits = raw.startsWith('57') ? raw : `57${raw}`;
+    const jid = `${fullDigits}@s.whatsapp.net`;
+    if (onOpenWaChat) {
+      onOpenWaChat(jid);
+    } else {
+      window.open(`https://wa.me/${fullDigits}`, '_blank');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200/80 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+          <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
             <UserPlus size={22} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Prospectos & Leads de Ventas</h2>
-            <p className="text-xs text-gray-500">Clasifica y da seguimiento a los compradores interesados antes de convertirlos en clientes fijos</p>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Gestión de Prospectos & Leads</h2>
+            <p className="text-xs text-gray-500">Contactos calificados con potencial de compra mayorista vinculados a WhatsApp</p>
           </div>
         </div>
         <button
@@ -159,107 +167,144 @@ export default function ProspectsSection() {
       </div>
 
       {/* Filtros y Buscador */}
-      <div className="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-2xl border border-gray-200/80 shadow-sm">
-        <div className="flex-1 flex items-center gap-2 px-2">
-          <Search size={18} className="text-gray-400" />
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 flex items-center gap-3 bg-white p-3 rounded-xl border border-gray-200/80 shadow-sm">
+          <Search size={18} className="text-gray-400 ml-1" />
           <input
             type="text"
-            placeholder="Buscar por nombre, empresa, teléfono o ciudad..."
+            placeholder="Buscar prospecto por nombre, tienda, ciudad o WhatsApp..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none"
+            className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none"
           />
         </div>
-        <div className="flex items-center gap-1.5 border-t sm:border-t-0 sm:border-l border-gray-200 pt-2 sm:pt-0 sm:pl-3">
-          {['todos', 'nuevo', 'contactado', 'calificado'].map(st => (
+
+        <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200/80 shadow-sm overflow-x-auto">
+          {['all', 'nuevo', 'contactado', 'calificado'].map(st => (
             <button
               key={st}
-              onClick={() => setSelectedStage(st)}
-              className={`px-3 py-1 rounded-xl text-xs font-semibold capitalize transition-colors ${
-                selectedStage === st
-                  ? 'bg-[#33475b] text-white'
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+              onClick={() => setFilterStage(st)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all select-none ${
+                filterStage === st
+                  ? 'bg-gray-900 text-white shadow-xs'
+                  : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              {st}
+              {st === 'all' ? 'Todos' : st}
             </button>
           ))}
         </div>
       </div>
 
       {/* Grid de Prospectos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(p => (
-          <div
-            key={p.id}
-            className="bg-white rounded-2xl p-5 border border-gray-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                {getStageBadge(p.stage)}
-                <div className="flex items-center gap-0.5 text-amber-400">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={13}
-                      className={i < p.score ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <h3 className="font-bold text-gray-900 text-base">{p.name}</h3>
-              <p className="text-xs text-gray-600 font-medium flex items-center gap-1.5 mt-0.5 mb-3">
-                <Building2 size={13} className="text-gray-400" /> {p.company}
-              </p>
-
-              <div className="space-y-1.5 text-xs text-gray-600 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Phone size={13} className="text-gray-400" />
-                  <a href={`https://wa.me/57${p.phone}`} target="_blank" rel="noreferrer" className="text-[#25D366] font-semibold hover:underline">
-                    +{p.phone}
-                  </a>
-                </div>
-                {p.email && (
-                  <div className="flex items-center gap-2 truncate">
-                    <Mail size={13} className="text-gray-400" />
-                    <span className="truncate">{p.email}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <MapPin size={13} className="text-gray-400" />
-                  <span>{p.city}</span>
-                </div>
-              </div>
-
-              {p.notes && (
-                <p className="text-xs text-gray-500 italic bg-amber-50/60 border border-amber-100/80 p-2.5 rounded-xl mb-4 leading-relaxed">
-                  "{p.notes}"
-                </p>
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
-              <a
-                href={`https://wa.me/57${p.phone}?text=Hola%20${encodeURIComponent(p.name)},%20te%20escribo%20de%20Ush%20By%20Ushuaia`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-              >
-                <MessageSquare size={13} /> Chat WhatsApp
-              </a>
-              <button
-                onClick={() => {
-                  setProspects(prospects.map(it => it.id === p.id ? { ...it, stage: 'calificado' } : it));
-                }}
-                className="text-xs font-semibold text-[#ff7a59] hover:underline"
-              >
-                Calificar lead →
-              </button>
-            </div>
+      {loading ? (
+        <div className="p-12 text-center text-gray-400 flex items-center justify-center gap-2">
+          <Loader2 size={18} className="animate-spin text-[#ff7a59]" />
+          <span className="text-sm">Cargando prospectos reales...</span>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl p-12 text-center border border-gray-200/80 shadow-sm select-none">
+          <div className="w-16 h-16 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center mx-auto mb-3">
+            <UserPlus size={32} />
           </div>
-        ))}
-      </div>
+          <h4 className="font-bold text-gray-800 text-base">No hay prospectos que coincidan</h4>
+          <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1 mb-4">
+            Registra nuevos prospectos para hacerles seguimiento comercial e iniciar chat en WhatsApp.
+          </p>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#ff7a59] hover:bg-[#e66343] text-white rounded-xl text-xs font-semibold shadow-xs"
+          >
+            <Plus size={14} /> Registrar primer prospecto
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(p => (
+            <div
+              key={p.id}
+              className="bg-white rounded-2xl p-5 border border-gray-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
+                      p.stage === 'calificado'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : p.stage === 'contactado'
+                        ? 'bg-sky-50 text-sky-700'
+                        : 'bg-amber-50 text-amber-700'
+                    }`}
+                  >
+                    {p.stage}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star
+                        key={i}
+                        size={13}
+                        className={i < p.score ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <h3 className="font-bold text-gray-900 text-base">{p.name}</h3>
+                <p className="text-xs text-gray-600 font-medium flex items-center gap-1.5 mt-0.5 mb-3">
+                  <Building2 size={13} className="text-gray-400" /> {p.company}
+                </p>
+
+                <div className="space-y-1.5 text-xs text-gray-600 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Phone size={13} className="text-gray-400" />
+                    <button
+                      type="button"
+                      onClick={() => handleOpenWhatsApp(p.phone)}
+                      className="text-[#25D366] font-semibold hover:underline"
+                    >
+                      +{p.phone}
+                    </button>
+                  </div>
+                  {p.email && (
+                    <div className="flex items-center gap-2 truncate">
+                      <Mail size={13} className="text-gray-400" />
+                      <span className="truncate">{p.email}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <MapPin size={13} className="text-gray-400" />
+                    <span>{p.city}</span>
+                  </div>
+                </div>
+
+                {p.notes && (
+                  <p className="text-xs text-gray-500 italic bg-amber-50/60 border border-amber-100/80 p-2.5 rounded-xl mb-4 leading-relaxed">
+                    "{p.notes}"
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => handleOpenWhatsApp(p.phone)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                >
+                  <MessageSquare size={13} /> Chat WhatsApp
+                </button>
+                <button
+                  onClick={() => {
+                    setProspects(prospects.map(it => it.id === p.id ? { ...it, stage: 'calificado' } : it));
+                  }}
+                  className="text-xs font-semibold text-[#ff7a59] hover:underline"
+                >
+                  Calificar lead →
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Modal nuevo */}
       {isModalOpen && (
@@ -357,8 +402,10 @@ export default function ProspectsSection() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#ff7a59] hover:bg-[#e66343] text-white rounded-xl text-sm font-semibold"
+                  disabled={saving}
+                  className="px-4 py-2 bg-[#ff7a59] hover:bg-[#e66343] text-white rounded-xl text-sm font-semibold flex items-center gap-1.5"
                 >
+                  {saving && <Loader2 size={14} className="animate-spin" />}
                   Registrar prospecto
                 </button>
               </div>

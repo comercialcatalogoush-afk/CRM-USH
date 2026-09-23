@@ -20,7 +20,7 @@ type ActivityForm = {
   happened_at: string;
 };
 
-type ContactOption = { id: string; full_name: string };
+type ContactOption = { id: string; full_name: string; phone?: string | null; whatsapp_number?: string | null };
 type DealOption = { id: string; title: string };
 
 const TYPE_ICON_STYLES: Record<ActivityType, string> = {
@@ -60,8 +60,8 @@ const nowToLocalInput = (): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-export default function ActivitySection(props: { userRole?: 'admin' | 'seller' }) {
-  const { userRole = 'admin' } = props;
+export default function ActivitySection(props: { userRole?: 'admin' | 'seller'; onOpenWaChat?: (jid: string) => void }) {
+  const { userRole = 'admin', onOpenWaChat } = props;
   const canDelete = userRole === 'admin';
   const [activities, setActivities] = useState<ActivityWithNames[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
@@ -300,11 +300,27 @@ export default function ActivitySection(props: { userRole?: 'admin' | 'seller' }
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       {activity.contact_name && (
-                        <span className="inline-flex items-center gap-1 bg-[#1b2333] text-white text-[10px] font-bold uppercase px-2 py-0.5">
+                        <span className="inline-flex items-center gap-1 bg-[#1b2333] text-white text-[10px] font-bold uppercase px-2 py-0.5 rounded">
                           <Users2 className="h-3 w-3 text-[#d88193]" />
                           sobre {activity.contact_name}
                         </span>
                       )}
+                      {onOpenWaChat && activity.contact_id && (() => {
+                        const ct = contacts.find(c => c.id === activity.contact_id);
+                        const raw = (ct?.whatsapp_number || ct?.phone || '').replace(/\D/g, '');
+                        if (!raw) return null;
+                        const fullDigits = raw.startsWith('57') ? raw : `57${raw}`;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => onOpenWaChat(`${fullDigits}@s.whatsapp.net`)}
+                            className="inline-flex items-center gap-1 bg-[#25D366] hover:bg-[#1ebe5d] text-white text-[10px] font-bold uppercase px-2 py-0.5 rounded transition-colors shadow-xs"
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                            Chat WhatsApp
+                          </button>
+                        );
+                      })()}
                       {activity.deal_title && (
                         <span className="inline-flex items-center gap-1 bg-[#d88193] text-white text-[10px] font-bold uppercase px-2 py-0.5">
                           <Target className="h-3 w-3" />
