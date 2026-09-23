@@ -1,11 +1,11 @@
 'use client';
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase, ADMIN_EMAIL } from '@/lib/supabase';
-import Logo from '@/components/Logo';
 import {
-  Lock, LogOut, ShieldAlert, Key, LayoutDashboard, Users,
-  Building2, Target, ListTodo, StickyNote, MessageCircle, X,
+  LayoutDashboard, Users, Building2, Target, ListTodo, StickyNote,
+  MessageCircle, LogOut, Lock, ChevronDown, ChevronRight, Bell,
+  Search, Settings, HelpCircle, Menu, X, Layers, Mail, TrendingUp,
+  UserPlus, BarChart3, Zap,
 } from 'lucide-react';
 import DashboardSection from '@/components/crm/DashboardSection';
 import ContactSection from '@/components/crm/ContactSection';
@@ -13,191 +13,127 @@ import CompaniesSection from '@/components/crm/CompaniesSection';
 import PipelineSection from '@/components/crm/PipelineSection';
 import TaskSection from '@/components/crm/TaskSection';
 import ActivitySection from '@/components/crm/ActivitySection';
-import { WhatsappSection, waSectionMeta } from '@/components/crm/WhatsappSection';
+import { WhatsappSection } from '@/components/crm/WhatsappSection';
+import SegmentosSection from '@/components/crm/SegmentosSection';
+import MarketingSection from '@/components/crm/MarketingSection';
+import ProspectsSection from '@/components/crm/ProspectsSection';
 
-type CrmTab = 'panel' | 'contacts' | 'companies' | 'pipeline' | 'tasks' | 'activity' | 'whatsapp';
-type CrmRole = 'admin' | 'seller';
+type CrmTab = 'panel' | 'contacts' | 'companies' | 'pipeline' | 'tasks' | 'activity' | 'whatsapp' | 'segments' | 'marketing' | 'prospects';
 
-const TABS: { key: CrmTab; label: string; icon: React.ComponentType<{ size?: number | string; className?: string }> }[] = [
-  { key: 'panel',      label: 'Panel de Control',    icon: LayoutDashboard },
-  { key: 'contacts',   label: 'Contactos',           icon: Users },
-  { key: 'companies',  label: 'Empresas',            icon: Building2 },
-  { key: 'pipeline',   label: 'Pipeline de Ventas',  icon: Target },
-  { key: 'tasks',      label: 'Tareas',              icon: ListTodo },
-  { key: 'activity',   label: 'Línea de Tiempo',     icon: StickyNote },
-  { key: 'whatsapp',   label: 'WhatsApp',            icon: MessageCircle },
+const NAV_GROUPS = [
+  {
+    label: null,
+    items: [
+      { key: 'panel' as CrmTab, label: 'Inicio', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'CRM',
+    items: [
+      { key: 'contacts' as CrmTab, label: 'Contactos', icon: Users },
+      { key: 'companies' as CrmTab, label: 'Empresas', icon: Building2 },
+      { key: 'pipeline' as CrmTab, label: 'Negocios', icon: Target },
+      { key: 'tasks' as CrmTab, label: 'Tareas', icon: ListTodo },
+      { key: 'segments' as CrmTab, label: 'Segmentos', icon: Layers },
+      { key: 'activity' as CrmTab, label: 'Actividades', icon: StickyNote },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { key: 'marketing' as CrmTab, label: 'Correos', icon: Mail },
+    ],
+  },
+  {
+    label: 'Ventas',
+    items: [
+      { key: 'prospects' as CrmTab, label: 'Prospectos', icon: UserPlus },
+      { key: 'whatsapp' as CrmTab, label: 'WhatsApp', icon: MessageCircle, badge: null as number | null },
+    ],
+  },
 ];
 
 export default function CrmClient() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [hasNonAdminSession, setHasNonAdminSession] = useState(false);
-  const [crmRole, setCrmRole] = useState<CrmRole>('admin');
-  const [configMissing, setConfigMissing] = useState(false);
-  const [loginEmail, setLoginEmail] = useState(ADMIN_EMAIL);
+  const [loginEmail, setLoginEmail] = useState(ADMIN_EMAIL || '');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<CrmTab>('panel');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarMobile, setSidebarMobile] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [unreadWa, setUnreadWa] = useState(0);
+  const [openGroups, setOpenGroups] = useState<string[]>(['CRM', 'Ventas', 'Marketing']);
 
-  const resolveRole = async (email: string): Promise<CrmRole | null> => {
-    try {
-      const { data, error } = await supabase
-        .from('crm_users')
-        .select('role, active')
-        .eq('email', email.toLowerCase())
-        .maybeSingle();
-      if (!error && data) {
-        if (data.active === false) return null;
-        return data.role === 'admin' ? 'admin' : 'seller';
-      }
-      // Compatibilidad: si aún no hay fila, el ADMIN_EMAIL sigue siendo admin.
-      return email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : null;
-    } catch (e) {
-      return email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : null;
-    }
-  };
-
+  // Auth check
   useEffect(() => {
-    if (!supabase) {
-      setConfigMissing(true);
-      setIsAuthenticated(false);
-      return;
-    }
+    if (!supabase) return;
     const checkAuth = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const sessionUser = data.session?.user;
-        const role = sessionUser?.email ? await resolveRole(sessionUser.email) : null;
-        setIsAuthenticated(role !== null);
-        setCrmRole(role ?? 'admin');
-        setHasNonAdminSession(!!sessionUser && role === null);
-      } catch (e) {
-        setIsAuthenticated(false);
-        setHasNonAdminSession(false);
-      }
+      const { data } = await supabase.auth.getSession();
+      const u = data.session?.user;
+      if (u) { setIsAuthenticated(true); setUserName(u.email?.split('@')[0] || 'Admin'); }
     };
     checkAuth();
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const sessionUser = session?.user;
-      const role = sessionUser?.email ? await resolveRole(sessionUser.email) : null;
-      setIsAuthenticated(role !== null);
-      setCrmRole(role ?? 'admin');
-      setHasNonAdminSession(!!sessionUser && role === null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setIsAuthenticated(!!session?.user);
+      setUserName(session?.user?.email?.split('@')[0] || '');
     });
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  if (configMissing) {
-    return (
-      <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
-        <div className="bg-white max-w-lg w-full p-8 border border-gray-200 shadow-2xl space-y-4">
-          <div className="w-12 h-12 rounded-full bg-ush-navy text-white flex items-center justify-center mx-auto shadow-md">
-            <Lock size={22} className="text-ush-pink" />
-          </div>
-          <h1 className="text-xl font-black text-ush-navy uppercase tracking-wide text-center">Configuración incompleta</h1>
-          <p className="text-xs text-neutral-600 font-light text-center">
-            El CRM necesita las variables de entorno de Supabase para funcionar. Copia <code className="bg-neutral-100 px-1">.env.example</code> a <code className="bg-neutral-100 px-1">.env.local</code> y pega tu URL y tu anon key de Supabase (Supabase → Project Settings → API Keys).
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Contador de mensajes no leídos WA
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchUnread = async () => {
+      const { data } = await supabase.from('crm_wa_chats').select('unread_count').gt('unread_count', 0);
+      setUnreadWa((data || []).reduce((s, c) => s + (c.unread_count || 0), 0));
+    };
+    fetchUnread();
+    const ch = supabase.channel('unread_wa').on('postgres_changes', { event: '*', schema: 'public', table: 'crm_wa_chats' }, fetchUnread).subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [isAuthenticated]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    if (!supabase) return;
+    setLoginLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
-      if (!error) {
-        const sessionUser = (await supabase.auth.getSession()).data.session?.user;
-        const role = sessionUser?.email ? await resolveRole(sessionUser.email) : null;
-        if (role !== null) {
-          setIsAuthenticated(true);
-          setCrmRole(role);
-          setHasNonAdminSession(false);
-        } else {
-          setHasNonAdminSession(true);
-          setIsAuthenticated(false);
-          setLoginError('Esta cuenta no tiene permisos de acceso al CRM.');
-        }
-      } else {
-        setLoginError('Credenciales incorrectas. Verifique el correo o la contraseña.');
-      }
-    } catch (err) {
-      setLoginError('Error de conexión con el servidor de autenticación.');
-    }
+      if (error) setLoginError('Correo o contraseña incorrectos.');
+    } catch { setLoginError('Error de conexión.'); }
+    finally { setLoginLoading(false); }
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabase?.auth.signOut();
-    } catch (e) {}
-    setIsAuthenticated(false);
-  };
+  const handleLogout = async () => { await supabase.auth.signOut(); setIsAuthenticated(false); };
 
+  const today = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const todayCap = today.charAt(0).toUpperCase() + today.slice(1);
+
+  // ── Pantalla de login ────────────────────────────────────────────────────
   if (!isAuthenticated) {
-    if (hasNonAdminSession) {
-      return (
-        <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full p-8 border border-gray-200 shadow-2xl space-y-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-ush-navy text-white flex items-center justify-center mx-auto shadow-md">
-              <ShieldAlert size={22} className="text-ush-pink" />
-            </div>
-            <h1 className="text-xl font-black text-ush-navy uppercase tracking-wide">Acceso Restringido</h1>
-            <p className="text-xs text-neutral-500 font-light">
-              Tu cuenta no está autorizada para ingresar al CRM. Solicita acceso al administrador.
-            </p>
-          </div>
-        </div>
-      );
-    }
     return (
-      <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
-        <div className="bg-white max-w-md w-full p-8 border border-gray-200 shadow-2xl space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-full bg-ush-navy text-white flex items-center justify-center mx-auto shadow-md">
-              <Lock size={22} className="text-ush-pink" />
+      <div className="min-h-screen bg-[#f5f8fa] flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-md p-8 rounded-xl shadow-lg border border-gray-200">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-xl bg-[#ff7a59] flex items-center justify-center mx-auto mb-4 shadow-md">
+              <span className="text-white text-2xl font-bold">U</span>
             </div>
-            <h1 className="text-xl font-black text-ush-navy uppercase tracking-wide">CRM Ush By Ushuaia</h1>
-            <p className="text-xs text-neutral-500 font-light">
-              Ingresa tus credenciales autorizadas para gestionar contactos, oportunidades, tareas y seguimiento.
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">Ush CRM</h1>
+            <p className="text-gray-500 text-sm mt-1">Inicia sesión para acceder</p>
           </div>
-
-          {loginError && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold text-center">{loginError}</div>
-          )}
-
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">Correo Electrónico *</label>
-              <input
-                type="email"
-                required
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder={ADMIN_EMAIL}
-                className="w-full border border-gray-300 p-3 text-xs text-neutral-900 focus:outline-none focus:border-ush-pink font-medium"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Correo</label>
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#ff7a59] focus:border-transparent" placeholder="correo@empresa.com" />
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">Contraseña de Seguridad *</label>
-              <input
-                type="password"
-                required
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full border border-gray-300 p-3 text-xs text-neutral-900 focus:outline-none focus:border-ush-pink"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+              <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#ff7a59] focus:border-transparent" placeholder="••••••••" />
             </div>
-            <button
-              type="submit"
-              className="w-full bg-ush-navy text-white font-bold py-3.5 px-4 text-xs uppercase tracking-widest hover:bg-ush-pink transition-all shadow-md flex items-center justify-center gap-2"
-            >
-              <Key size={16} /> Iniciar Sesión
+            {loginError && <p className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">{loginError}</p>}
+            <button type="submit" disabled={loginLoading} className="w-full bg-[#ff7a59] hover:bg-[#e8604a] text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60">
+              {loginLoading ? 'Iniciando...' : 'Iniciar sesión'}
             </button>
           </form>
         </div>
@@ -205,65 +141,193 @@ export default function CrmClient() {
     );
   }
 
-  if (!supabase) return null;
+  const renderSection = () => {
+    switch (activeTab) {
+      case 'panel': return <DashboardSection />;
+      case 'contacts': return <ContactSection />;
+      case 'companies': return <CompaniesSection />;
+      case 'pipeline': return <PipelineSection />;
+      case 'tasks': return <TaskSection />;
+      case 'activity': return <ActivitySection />;
+      case 'whatsapp': return <WhatsappSection />;
+      case 'segments': return <SegmentosSection />;
+      case 'marketing': return <MarketingSection />;
+      case 'prospects': return <ProspectsSection />;
+      default: return <DashboardSection />;
+    }
+  };
+
+  const isWA = activeTab === 'whatsapp';
 
   return (
-    <div className="min-h-screen bg-neutral-100 pb-16">
-      <header className="bg-[#1b2333] text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Logo />
-            <span className="text-xs font-bold uppercase tracking-widest bg-[#d88193] text-white px-2.5 py-1">CRM Comercial</span>
+    <div className="flex h-screen bg-[#f5f8fa] overflow-hidden">
+      {/* Overlay móvil */}
+      {sidebarMobile && <div className="fixed inset-0 bg-black/40 z-20 md:hidden" onClick={() => setSidebarMobile(false)} />}
+
+      {/* ═══ SIDEBAR ════════════════════════════════════════════════════════ */}
+      <aside className={`
+        fixed md:relative z-30 flex flex-col bg-[#33475b] text-white
+        transition-all duration-200 ease-in-out flex-shrink-0
+        ${sidebarMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${sidebarOpen ? 'w-56' : 'w-[56px]'}
+        h-full
+      `}>
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10 flex-shrink-0">
+          <div className="w-8 h-8 bg-[#ff7a59] rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-sm shadow-sm">U</div>
+          {sidebarOpen && <span className="font-semibold text-sm text-white truncate">Ush By Ushuaia</span>}
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 space-y-0.5 px-2">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={gi} className="mb-1">
+              {group.label && sidebarOpen && (
+                <button
+                  onClick={() => setOpenGroups(prev => prev.includes(group.label!) ? prev.filter(l => l !== group.label) : [...prev, group.label!])}
+                  className="flex items-center justify-between w-full px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white/60 transition-colors"
+                >
+                  {group.label}
+                  {openGroups.includes(group.label) ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                </button>
+              )}
+              {(!group.label || !sidebarOpen || openGroups.includes(group.label)) && group.items.map(item => {
+                const isActive = activeTab === item.key;
+                const badge = item.key === 'whatsapp' && unreadWa > 0 ? unreadWa : null;
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => { setActiveTab(item.key); setSidebarMobile(false); }}
+                    title={!sidebarOpen ? item.label : undefined}
+                    className={`
+                      flex items-center gap-3 w-full px-2 py-2.5 rounded-lg transition-all text-left
+                      ${isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white/90'}
+                      ${!sidebarOpen ? 'justify-center' : ''}
+                    `}
+                  >
+                    <Icon size={18} className="flex-shrink-0" />
+                    {sidebarOpen && (
+                      <span className="flex-1 text-[13px] font-medium truncate">{item.label}</span>
+                    )}
+                    {badge && (
+                      <span className={`bg-[#ff7a59] text-white text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${sidebarOpen ? 'min-w-[18px] h-[18px] px-1' : 'min-w-[16px] h-4 px-0.5'}`}>
+                        {badge > 99 ? '99+' : badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* Footer sidebar */}
+        <div className="border-t border-white/10 p-3 flex-shrink-0 space-y-1">
+          {sidebarOpen && (
+            <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+              <div className="w-7 h-7 rounded-full bg-[#ff7a59] flex items-center justify-center text-xs font-bold flex-shrink-0">
+                {userName.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-[12px] text-white/70 truncate">{userName}</span>
+            </div>
+          )}
+          <button onClick={() => setSidebarOpen(s => !s)} className="flex items-center gap-2 w-full px-2 py-1.5 text-white/50 hover:text-white/80 hover:bg-white/5 rounded-lg transition-colors text-xs">
+            <Menu size={16} className="flex-shrink-0" />
+            {sidebarOpen && <span>Colapsar</span>}
+          </button>
+          <button onClick={handleLogout} className="flex items-center gap-2 w-full px-2 py-1.5 text-white/50 hover:text-white/80 hover:bg-white/5 rounded-lg transition-colors text-xs">
+            <LogOut size={16} className="flex-shrink-0" />
+            {sidebarOpen && <span>Cerrar sesión</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* ═══ CONTENIDO PRINCIPAL ═════════════════════════════════════════════ */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Topbar */}
+        <header className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 flex-shrink-0">
+          <button className="md:hidden p-1.5 hover:bg-gray-100 rounded-lg" onClick={() => setSidebarMobile(true)}>
+            <Menu size={20} className="text-gray-600" />
+          </button>
+
+          {/* Breadcrumb / título */}
+          <div className="flex-1 min-w-0">
+            <h1 className="font-semibold text-[15px] text-gray-900 truncate">
+              {NAV_GROUPS.flatMap(g => g.items).find(i => i.key === activeTab)?.label || 'Panel'}
+            </h1>
+            <p className="text-[11px] text-gray-400 hidden sm:block">{todayCap}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className={`hidden sm:inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-1 ${crmRole === 'admin' ? 'bg-[#d88193]/20 text-[#d88193]' : 'bg-white/10 text-neutral-300'}`}>
-              {crmRole === 'admin' ? 'Administrador' : 'Vendedor'}
-            </span>
-            <button onClick={handleLogout} className="text-xs text-rose-300 hover:text-rose-100 flex items-center gap-1 font-bold border-l border-neutral-700 pl-4">
-              <LogOut size={16} /> Salir
+
+          {/* Búsqueda global */}
+          <div className="hidden md:flex items-center gap-2 bg-[#f5f8fa] border border-gray-200 rounded-lg px-3 py-1.5 w-64">
+            <Search size={14} className="text-gray-400" />
+            <input type="text" placeholder="Buscar en el CRM..." className="bg-transparent text-[13px] text-gray-700 placeholder-gray-400 outline-none flex-1" />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button className="p-2 hover:bg-gray-100 rounded-lg relative">
+              <Bell size={18} className="text-gray-600" />
+              {unreadWa > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-[#ff7a59] rounded-full" />}
             </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-black text-[#1b2333] uppercase tracking-tight">CRM Comercial</h1>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Gestiona contactos, empresas, oportunidades y seguimiento de tus clientes mayoristas.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 border-b border-gray-200 bg-white p-2 mb-6 shadow-sm overflow-x-auto">
-          {TABS.filter((tab) => crmRole === 'admin' || tab.key !== 'whatsapp').map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap ${
-                  activeTab === tab.key ? 'bg-[#1b2333] text-white shadow-sm' : 'text-neutral-600 hover:bg-neutral-100'
-                }`}
-              >
-                <Icon size={14} className={activeTab === tab.key ? 'text-[#d88193]' : 'text-neutral-400'} /> {tab.label}
-              </button>
-            );
-          })}
-          <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-neutral-400">
-            <button onClick={() => setActiveTab('panel')} className="p-1.5 border border-gray-300 text-neutral-500 hover:bg-neutral-50" title="Cerrar tab actual y volver al panel">
-              <X size={12} />
+            <button className="p-2 hover:bg-gray-100 rounded-lg">
+              <HelpCircle size={18} className="text-gray-600" />
             </button>
+            <div className="w-8 h-8 rounded-full bg-[#ff7a59] flex items-center justify-center text-white text-xs font-bold ml-1 cursor-pointer" onClick={handleLogout} title="Cerrar sesión">
+              {userName.charAt(0).toUpperCase()}
+            </div>
           </div>
-        </div>
+        </header>
 
-        {activeTab === 'panel' && <DashboardSection />}
-        {activeTab === 'contacts' && <ContactSection userRole={crmRole} />}
-        {activeTab === 'companies' && <CompaniesSection userRole={crmRole} />}
-        {activeTab === 'pipeline' && <PipelineSection userRole={crmRole} />}
-        {activeTab === 'tasks' && <TaskSection userRole={crmRole} />}
-        {activeTab === 'activity' && <ActivitySection userRole={crmRole} />}
-        {activeTab === 'whatsapp' && crmRole === 'admin' && <WhatsappSection />}
+        {/* Sección activa */}
+        <main className={`flex-1 overflow-auto ${isWA ? 'p-0' : 'p-6'}`}>
+          {renderSection()}
+        </main>
       </div>
+    </div>
+  );
+}
+
+// ─── Placeholders para secciones nuevas ─────────────────────────────────────
+function SegmentosPlaceholder() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+      <div className="w-16 h-16 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+        <Layers size={32} className="text-violet-400" />
+      </div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">Segmentos</h2>
+      <p className="text-gray-500 text-sm max-w-md mx-auto">
+        Filtra y guarda grupos de contactos según ciudad, etiquetas, actividad o criterios personalizados.
+        <strong> Próximamente disponible.</strong>
+      </p>
+    </div>
+  );
+}
+function MarketingPlaceholder() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+      <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+        <Mail size={32} className="text-amber-400" />
+      </div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">Correos de Marketing</h2>
+      <p className="text-gray-500 text-sm max-w-md mx-auto">
+        Crea y envía campañas de correo a tus segmentos directamente desde tu cuenta de correo.
+        <strong> Próximamente disponible.</strong>
+      </p>
+    </div>
+  );
+}
+function ProspectsPlaceholder() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+      <div className="w-16 h-16 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+        <UserPlus size={32} className="text-sky-400" />
+      </div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">Prospectos</h2>
+      <p className="text-gray-500 text-sm max-w-md mx-auto">
+        Gestiona leads entrantes, asigna scoring y conviértelos en contactos y negocios con un clic.
+        <strong> Próximamente disponible.</strong>
+      </p>
     </div>
   );
 }

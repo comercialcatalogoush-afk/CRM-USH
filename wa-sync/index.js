@@ -526,17 +526,34 @@ async function startSocket(forceNew = false) {
     }
     log.info({ chatsOk, total: hChats?.length }, 'todos los chats de historial sincronizados');
 
-    // 4. Procesar mensajes de historial (desde agosto 2026)
+    // 4. Procesar mensajes de historial en lotes paginados (estilo WhatsApp Web)
+    // Evita saturación de conexiones y fallos por historial largo.
+    const allMsgs = (hMessages || []).filter(m => {
+      const jid = m.key?.remoteJid;
+      return jid && !isJidBroadcast(jid) && jid !== 'status@broadcast';
+    });
+
+    const BATCH_SIZE = 40;
     let msgsOk = 0;
-    for (const m of hMessages || []) {
-      try {
-        const jid = m.key?.remoteJid;
-        if (!jid || isJidBroadcast(jid) || jid === 'status@broadcast') continue;
-        await processMessage(m);
-        msgsOk++;
-      } catch (e) {}
+    log.info({ totalFiltrados: allMsgs.length }, 'iniciando sincronización por lotes paginados estilo WhatsApp Web');
+
+    for (let i = 0; i < allMsgs.length; i += BATCH_SIZE) {
+      const chunk = allMsgs.slice(i, i + BATCH_SIZE);
+      for (const m of chunk) {
+        try {
+          await processMessage(m, { fromHistory: true });
+          msgsOk++;
+        } catch (e) {
+          // Si falla un mensaje particular, continúa con el resto del lote
+        }
+      }
+      // Pausa entre lotes para dar respiro al pool de conexiones y Baileys
+      await delay(40);
+      if ((i + BATCH_SIZE) % 200 === 0 || i + BATCH_SIZE >= allMsgs.length) {
+        log.info({ progreso: Math.min(i + BATCH_SIZE, allMsgs.length), total: allMsgs.length }, 'sincronización paginada en curso...');
+      }
     }
-    log.info({ msgsOk, total: hMessages?.length }, 'mensajes de historial procesados');
+    log.info({ msgsOk, total: allMsgs.length }, 'sincronización de historial completada exitosamente');
   });
 
   sock.ev.on('chats.set', async ({ chats: allChats, isLatest }) => {
