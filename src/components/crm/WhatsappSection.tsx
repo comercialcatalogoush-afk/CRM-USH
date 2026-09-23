@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import React, {
   useEffect, useRef, useState, useCallback, useMemo,
 } from 'react';
@@ -7,7 +7,7 @@ import {
   Check, CheckCheck, Clock, Image as ImageIcon, FileText, AlertCircle, X, RefreshCw,
   MessageCircle, Smartphone, Reply, Copy, CornerUpLeft, Zap, Play, Pause,
   Volume2, Phone, UserCheck, ExternalLink, Sparkles, Filter, ChevronRight,
-  Globe, Database
+  Globe, Database, Link as LinkIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { CrmWaChat, CrmWaMessage } from '@/types/wa';
@@ -289,6 +289,37 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
       console.error('Error cargando sesión WA:', e);
     }
   }, []);
+
+  // Estado de reinicio de sesion WhatsApp
+  const [resetting, setResetting] = useState<boolean>(false);
+
+  // Resetea la sesion de WhatsApp y solicita un nuevo QR via API segura
+  const resetSession = useCallback(async () => {
+    if (resetting) return;
+    const ok = window.confirm(
+      'Esto desvinculara la sesion actual de WhatsApp y pedira un nuevo codigo QR.\n\nAsegurate de que el servicio wa-sync este ejecutandose antes de escanear.\n\nContinuar?'
+    );
+    if (!ok) return;
+    setResetting(true);
+    setSessionStatus('connecting');
+    setQrData(null);
+    try {
+      const res = await fetch('/api/crm-wa-reset', { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error('[WA Reset]', body.error);
+        alert('Error al reiniciar: ' + (body.error || 'Error desconocido'));
+        setSessionStatus('disconnected');
+      }
+      await loadSession();
+    } catch (e) {
+      console.error('[WA Reset] Error de red:', e);
+      alert('Error de red al reiniciar la sesion.');
+      setSessionStatus('disconnected');
+    } finally {
+      setResetting(false);
+    }
+  }, [resetting, loadSession]);
 
   // Carga lista de chats con datos de contacto CRM enlazado
   const loadChats = useCallback(async () => {
@@ -618,6 +649,14 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
           >
             <RefreshCw size={15} /> Verificar conexión
           </button>
+            <button
+              onClick={resetSession}
+              disabled={resetting}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-red-50 border border-red-200 text-red-600 hover:text-red-700 rounded-full text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
+            >
+              {resetting ? <Loader2 size={15} className="animate-spin" /> : <LinkIcon size={15} />}
+              {resetting ? 'Reiniciando...' : 'Vincular nuevo QR'}
+            </button>
         </div>
       );
     }
@@ -1221,6 +1260,14 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={resetSession}
+              disabled={resetting}
+              className="p-2 hover:bg-red-100 rounded-full text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50"
+              title="Reconectar WhatsApp / Nuevo QR"
+            >
+              {resetting ? <Loader2 size={17} className="animate-spin" /> : <LinkIcon size={17} />}
+            </button>
             <a
               href="https://web.whatsapp.com"
               target="_blank"
