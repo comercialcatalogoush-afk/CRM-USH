@@ -6,7 +6,8 @@ import {
   Search, Send, Loader2, Smile, Paperclip, Mic, MoreVertical, ArrowLeft,
   Check, CheckCheck, Clock, Image as ImageIcon, FileText, AlertCircle, X, RefreshCw,
   MessageCircle, Smartphone, Reply, Copy, CornerUpLeft, Zap, Play, Pause,
-  Volume2, Phone, UserCheck, ExternalLink, Sparkles, Filter, ChevronRight
+  Volume2, Phone, UserCheck, ExternalLink, Sparkles, Filter, ChevronRight,
+  Globe, Database
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { CrmWaChat, CrmWaMessage } from '@/types/wa';
@@ -262,6 +263,10 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
   const [aiPanel, setAiPanel] = useState<boolean>(true);
   const [showInfo, setShowInfo] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  const [waMode, setWaMode] = useState<'embedded' | 'native'>('embedded');
+  const [showEmbeddedDrawer, setShowEmbeddedDrawer] = useState<boolean>(true);
+  const [selectedContact360, setSelectedContact360] = useState<any>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -974,14 +979,222 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
     );
   };
 
+  // Sugerencias rápidas IA de Ush By Ushuaia para el panel embebido
+  const QUICK_AI_RESPONSES = [
+    {
+      titulo: 'Catálogo Mayorista Digital',
+      texto: '¡Hola! Te comparto nuestro catálogo mayorista digital actualizado: https://ushbyushuaia.vercel.app/catalogo con precios especiales por docena.',
+    },
+    {
+      titulo: 'Pack Mayorista (12 unidades)',
+      texto: 'Para compras mayoristas manejamos packs surtidos desde 12 unidades con envío inmediato a todo Colombia. ¿Qué referencias o tallas te interesan?',
+    },
+    {
+      titulo: 'Descuento por Volumen (24+)',
+      texto: 'Para pedidos superiores a 24 unidades te otorgamos un 5% de descuento adicional sobre el total mayorista. ¿Te gustaría que te prepare una cotización?',
+    },
+    {
+      titulo: 'Despacho & Transportadora',
+      texto: 'Despachamos por Interrapidísimo y Envía. El tiempo de entrega es de 24 a 48 horas hábiles. En cuanto salga tu paquete te compartimos el número de guía.',
+    },
+  ];
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(text);
+    setTimeout(() => setCopiedText(null), 2000);
+  };
+
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-[#f0f2f5] overflow-hidden">
-      {/* ═══ PANEL IZQUIERDO: LISTA DE CHATS ════════════════════════════════ */}
-      <div
-        className={`flex flex-col bg-white border-r border-gray-200 w-full md:w-[380px] lg:w-[420px] flex-shrink-0 ${
-          mobileView === 'chat' ? 'hidden md:flex' : 'flex'
-        }`}
-      >
+    <div className="flex flex-col h-[calc(100vh-64px)] bg-[#f0f2f5] overflow-hidden">
+      {/* ═══ BARRA SUPERIOR: SELECTOR DE MODO WHATSAPP ═══════════════════════ */}
+      <div className="h-12 bg-white border-b border-gray-200 px-4 flex items-center justify-between flex-shrink-0 z-20 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200/80">
+            <button
+              onClick={() => setWaMode('embedded')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                waMode === 'embedded'
+                  ? 'bg-white text-gray-900 shadow-xs border border-gray-200/50'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <Globe size={13} className="text-[#25D366]" />
+              WhatsApp Web Oficial (En la página)
+            </button>
+            <button
+              onClick={() => setWaMode('native')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                waMode === 'native'
+                  ? 'bg-white text-gray-900 shadow-xs border border-gray-200/50'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <Database size={13} className="text-[#ff7a59]" />
+              Historial CRM
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{waMode === 'embedded' ? 'Sesión en vivo de WhatsApp' : 'Base de datos sincronizada'}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {waMode === 'embedded' && (
+            <>
+              <button
+                onClick={() => {
+                  const iframe = document.getElementById('wa-iframe') as HTMLIFrameElement;
+                  if (iframe) iframe.src = 'https://web.whatsapp.com';
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors"
+                title="Recargar WhatsApp Web"
+              >
+                <RefreshCw size={12} /> Recargar
+              </button>
+              <button
+                onClick={() => setShowEmbeddedDrawer(!showEmbeddedDrawer)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-all ${
+                  showEmbeddedDrawer
+                    ? 'bg-[#ff7a59] text-white shadow-xs'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Sparkles size={13} />
+                {showEmbeddedDrawer ? 'Ocultar Panel IA' : 'Ver Ficha 360° & IA'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ MODO 1: WHATSAPP WEB EMBEBIDO DENTRO DEL CRM ═════════════════════ */}
+      {waMode === 'embedded' ? (
+        <div className="flex-1 flex overflow-hidden relative">
+          {/* Iframe WhatsApp Web Oficial */}
+          <div className="flex-1 h-full w-full bg-[#efeae2] relative overflow-hidden flex flex-col">
+            <iframe
+              id="wa-iframe"
+              src="https://web.whatsapp.com"
+              className="w-full h-full border-none flex-1"
+              allow="camera; microphone; clipboard-read; clipboard-write; autoplay; geolocation; notifications"
+              title="WhatsApp Web Oficial"
+            />
+          </div>
+
+          {/* Panel Lateral: Ficha 360° y Sugerencias de IA integradas */}
+          {showEmbeddedDrawer && (
+            <aside className="w-80 lg:w-96 bg-white border-l border-gray-200 flex flex-col h-full z-10 shadow-lg flex-shrink-0 animate-in slide-in-from-right-2 duration-150">
+              <div className="p-4 border-b border-gray-100 bg-[#f5f8fa] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-orange-100 text-[#ff7a59] flex items-center justify-center font-bold">
+                    <Sparkles size={15} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-xs uppercase tracking-wide">Asistente IA & Ficha 360°</h3>
+                    <p className="text-[11px] text-gray-500">Respuestas y datos de clientes mayoristas</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowEmbeddedDrawer(false)}
+                  className="p-1 hover:bg-gray-200 rounded-md text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Sugerencias de Respuesta Inteligente */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">
+                      Sugerencias de Mensaje (IA)
+                    </span>
+                    <span className="text-[10px] text-gray-400">Clic para copiar</span>
+                  </div>
+                  <div className="space-y-2">
+                    {QUICK_AI_RESPONSES.map((r, i) => (
+                      <div
+                        key={i}
+                        className="p-3 bg-gray-50 hover:bg-orange-50/50 border border-gray-200 hover:border-[#ff7a59] rounded-xl transition-all group cursor-pointer"
+                        onClick={() => handleCopy(r.texto)}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-gray-800 text-xs">{r.titulo}</span>
+                          <button
+                            type="button"
+                            className="text-[#ff7a59] hover:text-[#e66343] p-1 rounded transition-colors"
+                            title="Copiar texto"
+                          >
+                            {copiedText === r.texto ? (
+                              <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
+                                <Check size={11} /> ¡Copiado!
+                              </span>
+                            ) : (
+                              <Copy size={13} />
+                            )}
+                          </button>
+                        </div>
+                        <p className="text-[11.5px] text-gray-600 leading-relaxed line-clamp-2">
+                          "{r.texto}"
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Clientes y Pedidos Recientes */}
+                <div className="pt-2 border-t border-gray-100">
+                  <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                    Clientes Mayoristas Registrados
+                  </span>
+                  <div className="space-y-2">
+                    <div
+                      onClick={() => setSelectedContact360({ name: 'Lisi Castaño', phone: '3213859717', city: 'Salamina, Caldas', deal: 'Pedido Mayorista Jeans Surtidos', amount: '$843.800 COP' })}
+                      className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl hover:shadow-xs transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-900 text-xs">Lisi Castaño</span>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Pedido Gestionado</span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-1">📍 Salamina, Caldas · +57 321 3859717</p>
+                      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-between text-xs">
+                        <span className="text-gray-500 font-medium">Jeans Surtidos</span>
+                        <span className="font-bold text-emerald-700">$843.800 COP</span>
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setSelectedContact360({ name: 'Angie Salazar', phone: '3128901234', city: 'Colombia', deal: 'Colección Jeans Mayorista', amount: '$1.250.000 COP' })}
+                      className="p-3 bg-sky-50/60 border border-sky-200 rounded-xl hover:shadow-xs transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-900 text-xs">Angie Salazar</span>
+                        <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">Pedido Gestionado</span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-1">📍 WhatsApp · +57 312 8901234</p>
+                      <div className="mt-2 pt-2 border-t border-sky-100 flex items-center justify-between text-xs">
+                        <span className="text-gray-500 font-medium">Colección Jeans</span>
+                        <span className="font-bold text-sky-700">$1.250.000 COP</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          )}
+        </div>
+      ) : (
+        /* ═══ MODO 2: HISTORIAL CRM SINCRONIZADO NATIVO ═══════════════════════ */
+        <div className="flex-1 flex overflow-hidden">
+          {/* ═══ PANEL IZQUIERDO: LISTA DE CHATS ════════════════════════════════ */}
+          <div
+            className={`flex flex-col bg-white border-r border-gray-200 w-full md:w-[380px] lg:w-[420px] flex-shrink-0 ${
+              mobileView === 'chat' ? 'hidden md:flex' : 'flex'
+            }`}
+          >
         {/* Header panel */}
         <div className="flex items-center justify-between px-4 py-3 bg-[#f0f2f5] border-b border-gray-200/80 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -1159,5 +1372,7 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
         {renderRightPanel()}
       </div>
     </div>
+    )}
+  </div>
   );
 }

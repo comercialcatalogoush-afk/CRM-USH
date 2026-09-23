@@ -6,7 +6,8 @@
   "permissions": [
     "sidePanel",
     "storage",
-    "activeTab"
+    "activeTab",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*",
@@ -36,5 +37,14 @@
       ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
 }
