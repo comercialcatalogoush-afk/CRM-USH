@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>UshCRM Companion</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f5f8fa;
+      color: #33475b;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 14px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e1e9ee;
+      margin-bottom: 14px;
+    }
+    .logo {
+      font-weight: 800;
+      font-size: 15px;
+      color: #1b2333;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .logo span { color: #ff7a59; }
+    .badge {
+      background: #e5f8ed;
+      color: #15803d;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid #e1e9ee;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #7c98b6;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .contact-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #1b2333;
+    }
+    .contact-meta {
+      font-size: 12px;
+      color: #516f90;
+      margin-top: 4px;
+    }
+    .deal-item {
+      padding: 8px 10px;
+      background: #fbfcfd;
+      border: 1px solid #edf1f4;
+      border-radius: 8px;
+      margin-top: 6px;
+    }
+    .deal-title { font-weight: 700; font-size: 12px; color: #1b2333; }
+    .deal-amount { font-weight: 800; color: #15803d; font-size: 13px; }
+    .deal-stage {
+      display: inline-block;
+      background: #ffede8;
+      color: #ff7a59;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-top: 3px;
+    }
+    .btn {
+      width: 100%;
+      background: #ff7a59;
+      color: #ffffff;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #e66343; }
+    .empty-text {
+      font-size: 12px;
+      color: #8298b0;
+      text-align: center;
+      padding: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">USH<span>CRM</span> Companion</div>
+    <div class="badge">Conectado</div>
+  </div>
+
+  <div class="card" id="contact-card">
+    <div class="card-title">Cliente Seleccionado</div>
+    <div class="contact-name" id="c-name">Cargando chat...</div>
+    <div class="contact-meta" id="c-meta">Selecciona un chat en WhatsApp Web</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>Pedidos & Oportunidades</span>
+      <span id="deals-count">0</span>
+    </div>
+    <div id="deals-list">
+      <p class="empty-text">Sin pedidos registrados para este contacto.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Acciones Rápidas</div>
+    <button class="btn" id="btn-open-crm">Abrir UshCRM Completo</button>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1007,7 +1007,16 @@ export function WhatsappSection({ initialJid, onJidConsumed }: WhatsappSectionPr
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            <a
+              href="https://web.whatsapp.com"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-lg text-xs font-bold shadow-xs transition-all select-none"
+              title="Abrir WhatsApp Web oficial en una pestaña con la extensión de IA activa"
+            >
+              <ExternalLink size={13} /> Web con IA
+            </a>
             <button
               onClick={() => {
                 loadSession();

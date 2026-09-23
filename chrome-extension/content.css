@@ -1,0 +1,92 @@
+/* Barra de Sugerencias IA UshCRM sobre WhatsApp Web */
+#ush-crm-ai-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #f7f9fa;
+  border-top: 1px solid #e1e9ee;
+  border-bottom: 1px solid #e9edef;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  z-index: 999;
+  transition: all 0.2s ease;
+}
+
+#ush-crm-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff7a59;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.ush-crm-ai-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ush-crm-ai-badge {
+  background: #ffede8;
+  color: #ff7a59;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+#ush-crm-ai-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
+}
+
+#ush-crm-ai-chips::-webkit-scrollbar {
+  height: 4px;
+}
+#ush-crm-ai-chips::-webkit-scrollbar-thumb {
+  background: #ccd0d5;
+  border-radius: 4px;
+}
+
+.ush-crm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #111b21;
+  border: 1px solid #d1d7db;
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.ush-crm-chip:hover {
+  background: #f0fdf4;
+  border-color: #25D366;
+  color: #0b4a24;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(37,211,102,0.15);
+}
+
+.ush-crm-chip:active {
+  transform: scale(0.98);
+}
+
+.ush-crm-chip-icon {
+  color: #25D366;
+  font-weight: bold;
+}
